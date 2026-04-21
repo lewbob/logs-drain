@@ -88,37 +88,42 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Setup Time Range
-	if req.StartTime == "" {
-		// Default to yesterday all day
-		req.StartTime = time.Now().AddDate(0, 0, -1).Format("2006-01-02T00:00:00Z")
-		if req.EndTime == "" {
-			req.EndTime = time.Now().AddDate(0, 0, -1).Format("2006-01-02T23:59:59Z")
+	// 1. Setup Time Range / Default to yesterday if empty
+	startTime := req.StartTime
+	endTime := req.EndTime
+	if startTime == "" {
+		// Use UTC to align with VictoriaLogs standard storage
+		yesterday := time.Now().UTC().AddDate(0, 0, -1)
+		startTime = yesterday.Format("2006-01-02T00:00:00Z")
+		if endTime == "" {
+			endTime = yesterday.Format("2006-01-02T23:59:59Z")
 		}
 	}
 
-	// 2. Fetch from VictoriaLogs
-	vlURL := req.VictoriaLogsURL
-	if vlURL == "" {
-		vlURL = "http://localhost:9428"
+	// 2. Query Construction (LogsQL)
+	// We use stream filters {...} for project and service as they are likely labels.
+	// This is much faster and more accurate in VictoriaLogs.
+	var streamFilters []string
+	if req.Project != "" {
+		streamFilters = append(streamFilters, fmt.Sprintf(`project=%q`, req.Project))
 	}
-	vlURL = strings.TrimRight(vlURL, "/") + "/select/logsql/query"
+	if req.Service != "" {
+		streamFilters = append(streamFilters, fmt.Sprintf(`service=%q`, req.Service))
+	}
 
 	var queryParts []string
+	if len(streamFilters) > 0 {
+		queryParts = append(queryParts, "{"+strings.Join(streamFilters, ", ")+"}")
+	}
 	if req.StreamFilter != "" {
 		queryParts = append(queryParts, req.StreamFilter)
 	}
-	if req.Project != "" {
-		queryParts = append(queryParts, fmt.Sprintf(`project:"%s"`, req.Project))
-	}
-	if req.Service != "" {
-		queryParts = append(queryParts, fmt.Sprintf(`service:"%s"`, req.Service))
-	}
 
-	if req.StartTime != "" && req.EndTime != "" {
-		queryParts = append(queryParts, fmt.Sprintf("_time:[%s, %s]", req.StartTime, req.EndTime))
-	} else if req.StartTime != "" {
-		queryParts = append(queryParts, fmt.Sprintf("_time:>=%s", req.StartTime))
+	// Time range with quotes to avoid syntax errors with colons
+	if startTime != "" && endTime != "" {
+		queryParts = append(queryParts, fmt.Sprintf("_time:[%q, %q]", startTime, endTime))
+	} else if startTime != "" {
+		queryParts = append(queryParts, fmt.Sprintf("_time:>=%q", startTime))
 	}
 
 	query := strings.Join(queryParts, " ")
@@ -126,13 +131,23 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 		query = "*"
 	}
 
+	// Select Select API URL
+	vlURL := req.VictoriaLogsURL
+	if vlURL == "" {
+		vlURL = "http://localhost:9428"
+	}
+	vlURL = strings.TrimRight(vlURL, "/") + "/select/logsql/query"
+
 	params := url.Values{}
 	params.Set("query", query)
-	if req.Limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", req.Limit))
+	// Default a high limit if not specified, to avoid VLogs server-side default truncation
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 1000000 // 1M lines default
 	}
+	params.Set("limit", fmt.Sprintf("%d", limit))
 
-	log.Printf("Fetching logs from %s with query: %s", vlURL, query)
+	log.Printf("Final LogsQL Query: %s", query)
 
 	vlReq, err := http.NewRequest(http.MethodPost, vlURL, bytes.NewBufferString(params.Encode()))
 	if err != nil {
@@ -303,6 +318,7 @@ func processFullLogs(reader io.Reader, logType string, depth int, sim float64) L
 				} else {
 					routeCounts["unknown"]++
 				}
+				res.TotalProcessed++
 			}
 		} else {
 			// Java logic
