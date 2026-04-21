@@ -1,0 +1,6 @@
+*.exe
+logs-drain-linux-amd64
+kfpt.json
+.DS_Store
+.agent/
+.system_generated/

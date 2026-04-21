@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nginx 日志智能分析报告</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+  color:#e0e0e0;min-height:100vh;padding:40px 20px;
+}
+.container{max-width:1100px;margin:0 auto}
+.header{
+  text-align:center;margin-bottom:40px;padding:40px;
+  background:rgba(255,255,255,0.05);border-radius:20px;
+  border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(10px);
+}
+.header h1{
+  font-size:28px;font-weight:700;
+  background:linear-gradient(135deg,#00d2ff,#3a7bd5);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  margin-bottom:8px;
+}
+.header .sub{color:#888;font-size:14px}
+.meta-row{display:flex;justify-content:center;gap:30px;margin-top:20px;flex-wrap:wrap}
+.meta-item{font-size:13px;color:#aaa}
+.meta-item span{color:#ccc;font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;margin-bottom:40px}
+.card{
+  background:rgba(255,255,255,0.06);border-radius:16px;padding:24px;
+  border:1px solid rgba(255,255,255,0.08);text-align:center;
+  transition:transform .2s;
+}
+.card:hover{transform:translateY(-4px)}
+.card .icon{font-size:32px;margin-bottom:8px}
+.card .val{font-size:32px;font-weight:700}
+.card .lbl{font-size:13px;color:#888;margin-top:4px}
+.card.ok .val{color:#4ade80}
+.card.err .val{color:#f87171}
+.card.inf .val{color:#60a5fa}
+.section{
+  background:rgba(255,255,255,0.04);border-radius:16px;
+  border:1px solid rgba(255,255,255,0.08);margin-bottom:30px;overflow:hidden;
+}
+.stitle{
+  padding:20px 28px;font-size:18px;font-weight:600;
+  border-bottom:1px solid rgba(255,255,255,0.08);
+  display:flex;align-items:center;gap:10px;
+}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:14px 20px;font-size:12px;text-transform:uppercase;
+   letter-spacing:.5px;color:#888;background:rgba(255,255,255,0.03);font-weight:500}
+td{padding:14px 20px;font-size:14px;border-top:1px solid rgba(255,255,255,0.05)}
+tr:hover td{background:rgba(255,255,255,0.03)}
+.bar-bg{background:rgba(255,255,255,0.08);border-radius:6px;height:10px;width:160px;overflow:hidden}
+.bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#3a7bd5,#00d2ff);transition:width .6s}
+.badge{display:inline-flex;align-items:center;justify-content:center;
+       width:28px;height:28px;border-radius:8px;font-size:13px;font-weight:600}
+.r1{background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff}
+.r2{background:linear-gradient(135deg,#94a3b8,#64748b);color:#fff}
+.r3{background:linear-gradient(135deg,#a16207,#92400e);color:#fff}
+.rn{background:rgba(255,255,255,0.1);color:#aaa}
+.route{font-family:Consolas,Monaco,monospace;font-weight:500;color:#93c5fd}
+.pct{font-weight:600;color:#e0e0e0}
+.ei{padding:20px 28px;border-top:1px solid rgba(255,255,255,0.05)}
+.ei:first-child{border-top:none}
+.eh{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.elv{background:rgba(248,113,113,0.15);color:#f87171;padding:3px 10px;
+     border-radius:6px;font-size:12px;font-weight:600;text-transform:uppercase}
+.ec{color:#fbbf24;font-weight:600}
+.et{background:rgba(0,0,0,0.3);padding:12px 16px;border-radius:8px;
+    font-family:Consolas,monospace;font-size:13px;color:#d1d5db;
+    line-height:1.6;word-break:break-all;overflow-x:auto}
+.ai{padding:18px 28px;border-top:1px solid rgba(255,255,255,0.05);display:flex;gap:14px}
+.ai:first-child{border-top:none}
+.an{min-width:28px;height:28px;background:linear-gradient(135deg,#3a7bd5,#00d2ff);
+    border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;color:#fff;flex-shrink:0}
+.at strong{color:#fbbf24}
+.at p{color:#9ca3af;font-size:14px;margin-top:4px}
+.footer{text-align:center;padding:30px;color:#555;font-size:12px}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h1>🔍 Nginx 日志智能分析报告</h1>
+<div class="sub">Powered by Drain Algorithm · Log Pattern Mining</div>
+<div class="meta-row">
+  <div class="meta-item">📅 分析时间: <span>2026-04-09 10:33:34</span></div>
+  <div class="meta-item">📂 源文件: <span>kfpt.json</span></div>
+  <div class="meta-item">📋 日志类型: <span>nginx</span></div>
+</div>
+</div>
+<div class="stats">
+<div class="card inf"><div class="icon">📊</div><div class="val">100757</div><div class="lbl">日志总行数</div></div>
+<div class="card ok"><div class="icon">✅</div><div class="val">100611</div><div class="lbl">正常访问日志</div></div>
+<div class="card err"><div class="icon">❌</div><div class="val">146</div><div class="lbl">异常错误日志</div></div>
+<div class="card err"><div class="icon">📉</div><div class="val">0.14%</div><div class="lbl">错误率</div></div>
+</div>
+<div class="section">
+<div class="stitle">✅ 正常访问日志 · 路由请求量 TOP 10</div>
+<table><thead><tr><th>排名</th><th>路由段</th><th>请求数</th><th>占比</th><th>分布</th></tr></thead><tbody>
+<tr><td><span class="badge r1">1</span></td><td class="route">/wutong</td><td>37323</td><td class="pct">37.1%</td><td><div class="bar-bg"><div class="bar-fill" style="width:37.1%"></div></div></td></tr>
+<tr><td><span class="badge r2">2</span></td><td class="route">/dacp</td><td>27084</td><td class="pct">26.9%</td><td><div class="bar-bg"><div class="bar-fill" style="width:26.9%"></div></div></td></tr>
+<tr><td><span class="badge r3">3</span></td><td class="route">/jlsc</td><td>7353</td><td class="pct">7.3%</td><td><div class="bar-bg"><div class="bar-fill" style="width:7.3%"></div></div></td></tr>
+<tr><td><span class="badge rn">4</span></td><td class="route">/didp-develop-svc</td><td>7283</td><td class="pct">7.2%</td><td><div class="bar-bg"><div class="bar-fill" style="width:7.2%"></div></div></td></tr>
+<tr><td><span class="badge rn">5</span></td><td class="route">/edc-pub-system-ms</td><td>7019</td><td class="pct">7.0%</td><td><div class="bar-bg"><div class="bar-fill" style="width:7.0%"></div></div></td></tr>
+<tr><td><span class="badge rn">6</span></td><td class="route">/didp-mnt-svc</td><td>1844</td><td class="pct">1.8%</td><td><div class="bar-bg"><div class="bar-fill" style="width:1.8%"></div></div></td></tr>
+<tr><td><span class="badge rn">7</span></td><td class="route">/edc-pub-metainfo-ms</td><td>1304</td><td class="pct">1.3%</td><td><div class="bar-bg"><div class="bar-fill" style="width:1.3%"></div></div></td></tr>
+<tr><td><span class="badge rn">8</span></td><td class="route">/sptl-4A-log</td><td>1193</td><td class="pct">1.2%</td><td><div class="bar-bg"><div class="bar-fill" style="width:1.2%"></div></div></td></tr>
+<tr><td><span class="badge rn">9</span></td><td class="route">/v2</td><td>1169</td><td class="pct">1.2%</td><td><div class="bar-bg"><div class="bar-fill" style="width:1.2%"></div></div></td></tr>
+<tr><td><span class="badge rn">10</span></td><td class="route">/didp-maintain-web</td><td>1057</td><td class="pct">1.1%</td><td><div class="bar-bg"><div class="bar-fill" style="width:1.1%"></div></div></td></tr>
+</tbody></table></div><div class="section"><div class="stitle">❌ 异常日志 · 模式聚合归一化 (共 5 种模板)</div>
+<div class="ei"><div class="eh"><span class="elv">ERROR</span><span>模板 #1</span><span class="ec">出现 74 次</span></div><div class="et">no live upstreams while connecting to upstream, client: <*>, server: <*>.*, request: <*> <*> HTTP/<*>", upstream: <*> host: "<*>:<*>", referrer: <*></div></div>
+<div class="ei"><div class="eh"><span class="elv">ERROR</span><span>模板 #2</span><span class="ec">出现 33 次</span></div><div class="et">connect() failed (<*>: Connection refused) while connecting to upstream, client: <*>, server: _, request: "GET /v<*>/catalog HTTP/<*>", upstream: "http://<*>:<*>/v<*>/catalog", host: "<*>:<*>"</div></div>
+<div class="ei"><div class="eh"><span class="elv">ERROR</span><span>模板 #3</span><span class="ec">出现 32 次</span></div><div class="et">no live upstreams while connecting to upstream, client: <*>, server: <*>.*, request: "GET <*> HTTP/<*>", upstream: <*> host: "<*>:<*>"</div></div>
+<div class="ei"><div class="eh"><span class="elv">ERROR</span><span>模板 #4</span><span class="ec">出现 4 次</span></div><div class="et">client intended to send too large body: <*> bytes, client: <*>, server: localhost, request: "POST /sptl-<*>A-log/api/log<*>A/addLog HTTP/<*>", host: "<*>:<*>"</div></div>
+<div class="ei"><div class="eh"><span class="elv">ERROR</span><span>模板 #5</span><span class="ec">出现 3 次</span></div><div class="et">upstream timed out (<*>: Connection timed out) while reading response header from upstream, client: <*>, server: <*>.*, request: "POST /anb_BB<*>AE/api/jupyter/run HTTP/<*>", upstream: "http://<*>:<*>/anb_BB<*>AE/api/jupyter/run", host: "<*>:<*>", referrer: "https://<*>:<*>/anb_BB<*>AE/"</div></div>
+</div><div class="section">
+<div class="stitle">💡 系统处理建议</div>
+<div class="ai"><div class="an">1</div><div class="at"><strong>Connection refused / timed out</strong><p>检查上游服务(Upstream)是否宕机或过载，排查网络防火墙或网关拦截策略</p></div></div>
+<div class="ai"><div class="an">2</div><div class="at"><strong>client intended to send too large body</strong><p>建议调大 Nginx 的 client_max_body_size 配置以允许大文件上传</p></div></div>
+<div class="ai"><div class="an">3</div><div class="at"><strong>no live upstreams</strong><p>严重故障! 所有负载均衡节点不可用，紧急排查后端服务健康探针或容器状态</p></div></div>
+<div class="ai"><div class="an">4</div><div class="at"><strong>upstream timed out</strong><p>后端响应超时，检查接口性能瓶颈或增大 proxy_read_timeout 配置</p></div></div>
+</div><div class="footer">Report generated by logs-drain (Drain Algorithm) · 2026-04-09 10:33:34</div>
+</div></body></html>

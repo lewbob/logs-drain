@@ -1,0 +1,34 @@
+
+--- Nginx Log Analysis Results ---
+Total Raw Lines: 100757
+Normal Access Logs: 100611
+Error Logs: 146
+----------------------------------
+
+=== [正常访问日志] 路由请求 TOP 10 ===
+Top  1 | 占比: 37.10% | 计数:  37323 | 路由段: /wutong
+Top  2 | 占比: 26.92% | 计数:  27084 | 路由段: /dacp
+Top  3 | 占比:  7.31% | 计数:   7353 | 路由段: /jlsc
+Top  4 | 占比:  7.24% | 计数:   7283 | 路由段: /didp-develop-svc
+Top  5 | 占比:  6.98% | 计数:   7019 | 路由段: /edc-pub-system-ms
+Top  6 | 占比:  1.83% | 计数:   1844 | 路由段: /didp-mnt-svc
+Top  7 | 占比:  1.30% | 计数:   1304 | 路由段: /edc-pub-metainfo-ms
+Top  8 | 占比:  1.19% | 计数:   1193 | 路由段: /sptl-4A-log
+Top  9 | 占比:  1.16% | 计数:   1169 | 路由段: /v2
+Top 10 | 占比:  1.05% | 计数:   1057 | 路由段: /didp-maintain-web
+======================================
+
+=== [异常日志] 模式聚合处理结果 ===
+共提取出唯一的异常模板数量: 5
+
+[ 74 次] [error] no live upstreams while connecting to upstream, client: <*>, server: <*>.*, request: <*> <*> HTTP/<*>", upstream: <*> host: "<*>:<*>", referrer: <*>
+[ 33 次] [error] connect() failed (<*>: Connection refused) while connecting to upstream, client: <*>, server: _, request: "GET /v<*>/catalog HTTP/<*>", upstream: "http://<*>:<*>/v<*>/catalog", host: "<*>:<*>"
+[ 32 次] [error] no live upstreams while connecting to upstream, client: <*>, server: <*>.*, request: "GET <*> HTTP/<*>", upstream: <*> host: "<*>:<*>"
+[  4 次] [error] client intended to send too large body: <*> bytes, client: <*>, server: localhost, request: "POST /sptl-<*>A-log/api/log<*>A/addLog HTTP/<*>", host: "<*>:<*>"
+[  3 次] [error] upstream timed out (<*>: Connection timed out) while reading response header from upstream, client: <*>, server: <*>.*, request: "POST /anb_BB<*>AE/api/jupyter/run HTTP/<*>", upstream: "http://<*>:<*>/anb_BB<*>AE/api/jupyter/run", host: "<*>:<*>", referrer: "https://<*>:<*>/anb_BB<*>AE/"
+
+=== [系统处理建议] ===
+1. Connection refused/timed out: 检查对应的上游服务(Upstream)是否宕机、过载，或网络防火墙/网关拦截。
+2. "client intended to send too large body": 建议调大 Nginx 的 client_max_body_size 配置，以允许客户端上传大文件或大数据包。
+3. no live upstreams: 表示所有对应的负载均衡节点都处于不可用状态，属于严重故障，需紧急排查后端服务健康探针或容器存活状态。
+4. file not found (404/open failed): 通常是静态资源(favicon.ico等)由于构建未包括或路径配错引发，可补齐文件或在 Nginx 中拦截忽略。
