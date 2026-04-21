@@ -94,36 +94,33 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 	if startTime == "" {
 		// Use UTC to align with VictoriaLogs standard storage
 		yesterday := time.Now().UTC().AddDate(0, 0, -1)
-		startTime = yesterday.Format("2006-01-02T00:00:00Z")
+		// Correct way to output a fixed time for a date in Go
+		startTime = yesterday.Format("2006-01-02") + "T00:00:00Z"
 		if endTime == "" {
-			endTime = yesterday.Format("2006-01-02T23:59:59Z")
+			endTime = yesterday.Format("2006-01-02") + "T23:59:59Z"
 		}
 	}
 
 	// 2. Query Construction (LogsQL)
-	// We use stream filters {...} for project and service as they are likely labels.
-	// This is much faster and more accurate in VictoriaLogs.
-	var streamFilters []string
+	var queryParts []string
+	
+	// Revering to field filters project:"value" since {project="value"} only works for Stream Labels.
+	// Users reported 0 results with {} likely because project/service are stored as fields.
 	if req.Project != "" {
-		streamFilters = append(streamFilters, fmt.Sprintf(`project=%q`, req.Project))
+		queryParts = append(queryParts, fmt.Sprintf(`project:%q`, req.Project))
 	}
 	if req.Service != "" {
-		streamFilters = append(streamFilters, fmt.Sprintf(`service=%q`, req.Service))
-	}
-
-	var queryParts []string
-	if len(streamFilters) > 0 {
-		queryParts = append(queryParts, "{"+strings.Join(streamFilters, ", ")+"}")
+		queryParts = append(queryParts, fmt.Sprintf(`service:%q`, req.Service))
 	}
 	if req.StreamFilter != "" {
 		queryParts = append(queryParts, req.StreamFilter)
 	}
 
-	// Time range with quotes to avoid syntax errors with colons
+	// Time range with quotes and space after colon for standard compliance
 	if startTime != "" && endTime != "" {
-		queryParts = append(queryParts, fmt.Sprintf("_time:[%q, %q]", startTime, endTime))
+		queryParts = append(queryParts, fmt.Sprintf("_time: [%q, %q]", startTime, endTime))
 	} else if startTime != "" {
-		queryParts = append(queryParts, fmt.Sprintf("_time:>=%q", startTime))
+		queryParts = append(queryParts, fmt.Sprintf("_time: >=%q", startTime))
 	}
 
 	query := strings.Join(queryParts, " ")
@@ -140,10 +137,10 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := url.Values{}
 	params.Set("query", query)
-	// Default a high limit if not specified, to avoid VLogs server-side default truncation
+	// Keep high limit to avoid truncation
 	limit := req.Limit
 	if limit <= 0 {
-		limit = 1000000 // 1M lines default
+		limit = 1000000 
 	}
 	params.Set("limit", fmt.Sprintf("%d", limit))
 
