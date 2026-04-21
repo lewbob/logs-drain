@@ -32,6 +32,7 @@ type NormalizeRequest struct {
 	Password           string  `json:"password"`            // optional
 	InsecureSkipVerify bool    `json:"insecure_skip_verify"` // optional
 	LogType            string  `json:"log_type"`            // "java" or "nginx"
+	ErrorsOnly         bool    `json:"errors_only"`         // Only fetch error logs
 	OutputFormat       string  `json:"output_format"`       // "json" (default) or "html"
 	SimThreshold       float64 `json:"sim_threshold"`       // optional, default 0.75
 	Depth              int     `json:"depth"`               // optional, default 5
@@ -114,6 +115,12 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.StreamFilter != "" {
 		queryParts = append(queryParts, req.StreamFilter)
+	}
+
+	if req.ErrorsOnly {
+		// Focused filter for high-volume environments
+		// Matches: HTTP 4xx/5xx, ERROR/WARN levels, or "Exception" keywords
+		queryParts = append(queryParts, `(status:>=400 OR level:[ERROR, WARN, err, warn, fail] OR "Exception" OR "error" OR "ERROR")`)
 	}
 
 	// Time range with quotes and space after colon for standard compliance
