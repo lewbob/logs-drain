@@ -120,7 +120,7 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 	if req.ErrorsOnly {
 		// Focused filter for high-volume environments
 		// Matches: HTTP 4xx/5xx, ERROR/WARN levels, or "Exception" keywords
-		queryParts = append(queryParts, `(status:>=400 OR level:[ERROR, WARN, err, warn, fail] OR "Exception" OR "error" OR "ERROR")`)
+		queryParts = append(queryParts, `(status:>=400 OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail OR "Exception" OR "error" OR "ERROR")`)
 	}
 
 	// Time range with quotes and space after colon for standard compliance
