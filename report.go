@@ -16,7 +16,7 @@ type RouteItem struct {
 	Value int
 }
 
-func generateHTMLReport(w io.Writer, filePath, logType string, rawLines, accessTotal, errorTotal, parseErrors, noMsg int, routes []RouteItem, groups []*drain.LogGroup, groupMeta map[string][2]string) {
+func generateHTMLReport(w io.Writer, filePath, logType string, rawLines, accessTotal, errorTotal, parseErrors, noMsg int, routes []RouteItem, groups []*drain.LogGroup, groupMeta map[string][2]string, llmAnalysis string) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	errorRate := float64(0)
 	if rawLines > 0 {
@@ -340,7 +340,17 @@ footer {
       <h2>智能排障优化建议</h2>
     </div>
     <div class="advice-grid">`)
-	bw.WriteString(adviceHTML)
+
+	if llmAnalysis != "" {
+		bw.WriteString(`
+      <div class="advice-card" style="grid-column: 1 / -1; background: #f0f7ff; border: 1px solid #bae0ff;">
+        <h4><i>🤖</i> 大模型智能诊断建议</h4>
+        <p style="font-size: 14px; line-height: 1.6; color: #003a8c;">` + llmAnalysis + `</p>
+      </div>`)
+	} else {
+		bw.WriteString(adviceHTML)
+	}
+
 	bw.WriteString(`
     </div>
   </div>

@@ -33,6 +33,7 @@ type NormalizeRequest struct {
 	InsecureSkipVerify bool    `json:"insecure_skip_verify"` // optional
 	LogType            string  `json:"log_type"`            // "java" or "nginx"
 	ErrorsOnly         bool    `json:"errors_only"`         // Only fetch error logs
+	EnableLLM          bool    `json:"enable_llm"`          // Enable LLM analysis
 	OutputFormat       string  `json:"output_format"`       // "json" (default) or "html"
 	SimThreshold       float64 `json:"sim_threshold"`       // optional, default 0.75
 	Depth              int     `json:"depth"`               // optional, default 5
@@ -54,6 +55,7 @@ type NormalizeResponse struct {
 	ParseErrors    int        `json:"parse_errors"`
 	AccessTotal    int        `json:"access_total"`
 	ErrorTotal     int        `json:"error_total"`
+	LLMAnalysis    string     `json:"llm_analysis,omitempty"`
 	Templates      []Template `json:"templates"`
 }
 
@@ -119,8 +121,15 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	if req.ErrorsOnly {
 		// Focused filter for high-volume environments
-		// Matches: HTTP 4xx/5xx, ERROR/WARN levels, or "Exception" keywords
-		queryParts = append(queryParts, `(status:>=400 OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail OR "Exception" OR "error" OR "ERROR")`)
+		// 1. Matches structured fields if they exist (status >= 400 or level is error/warn)
+		// 2. Matches Nginx access log patterns (HTTP status 4xx/5xx) inside _msg
+		// 3. Matches Java/General error keywords inside _msg
+		queryParts = append(queryParts, `(
+			status:>=400 
+			OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail 
+			OR _msg:~"HTTP/1\..\" [45]\d{2}" 
+			OR _msg:[" ERROR ", " WARN ", "Exception", "error", "ERROR", "fail", "timeout"]
+		)`)
 	}
 
 	// Time range with quotes and space after colon for standard compliance
@@ -193,12 +202,17 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 	processResult := processFullLogs(vlResp.Body, req.LogType, depth, sim)
 
 	// 4. Output
+	llmAnalysis := ""
+	if req.EnableLLM {
+		llmAnalysis = getLLMAnalysis(req.LogType, processResult.Groups, processResult.GroupMeta)
+	}
+
 	if req.OutputFormat == "html" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		generateHTMLReport(w, "VictoriaLogs ("+req.Project+"/"+req.Service+")", req.LogType,
 			processResult.RawLines, processResult.AccessTotal, processResult.ErrorTotal,
 			processResult.ParseErrors, processResult.NoMsg,
-			processResult.Routes, processResult.Groups, processResult.GroupMeta)
+			processResult.Routes, processResult.Groups, processResult.GroupMeta, llmAnalysis)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		templates := make([]Template, 0, len(processResult.Groups))
@@ -222,6 +236,7 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 			ParseErrors:    processResult.ParseErrors,
 			AccessTotal:    processResult.AccessTotal,
 			ErrorTotal:     processResult.ErrorTotal,
+			LLMAnalysis:    llmAnalysis,
 			Templates:      templates,
 		})
 	}
@@ -391,7 +406,7 @@ func runLocalDebug(filePath, logType string, sim float64, outFile string) {
 	if outFile != "" && strings.HasSuffix(strings.ToLower(outFile), ".html") {
 		outF, _ := os.Create(outFile)
 		defer outF.Close()
-		generateHTMLReport(outF, filePath, logType, res.RawLines, res.AccessTotal, res.ErrorTotal, res.ParseErrors, res.NoMsg, res.Routes, res.Groups, res.GroupMeta)
+		generateHTMLReport(outF, filePath, logType, res.RawLines, res.AccessTotal, res.ErrorTotal, res.ParseErrors, res.NoMsg, res.Routes, res.Groups, res.GroupMeta, "")
 		log.Printf("Report generated: %s", outFile)
 		return
 	}
@@ -406,3 +421,97 @@ func runLocalDebug(filePath, logType string, sim float64, outFile string) {
 	}
 }
 
+func getLLMAnalysis(logType string, groups []*drain.LogGroup, groupMeta map[string][2]string) string {
+	const (
+		baseURL = "http://10.250.186.247:20201"
+		appKey  = "9FZT8-SC002-PV6P1-UTK2Z-0106"
+		secret  = "multibot@@zhiwei"
+	)
+
+	// 1. Get Token
+	tokenResp, err := http.Get(fmt.Sprintf("%s/ds/api/v1/external/appKey/getToken?appkey=%s&secret=%s", baseURL, appKey, secret))
+	if err != nil {
+		return "LLM Error: Failed to connect to token service."
+	}
+	defer tokenResp.Body.Close()
+
+	var tokenData struct {
+		Success bool   `json:"success"`
+		Data    string `json:"data"`
+	}
+	if err := json.NewDecoder(tokenResp.Body).Decode(&tokenData); err != nil || !tokenData.Success {
+		return "LLM Error: Failed to parse token."
+	}
+	token := tokenData.Data
+
+	// 2. Prepare Prompt
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("你是一位资深的运维专家，请分析以下 %s 日志的异常模式并给出简洁的排查建议（总字数控制在200字以内，不要输出废话）：\n\n", logType))
+
+	// Send top 10 groups (prioritizing errors)
+	count := 0
+	for _, g := range groups {
+		if count >= 10 {
+			break
+		}
+		level := ""
+		if meta, ok := groupMeta[g.ID]; ok {
+			level = meta[0]
+		}
+		// If nginx and access log (level empty), we might want to skip unless it's unusual
+		// But for java, we usually care about all clusters
+		sb.WriteString(fmt.Sprintf("- [%s] 频次:%d 模式: %s\n", level, g.Count, strings.Join(g.LogEvents, " ")))
+		count++
+	}
+
+	// 3. Chat Request (SSE parsing)
+	chatURL := baseURL + "/ds/api/v1/external/bot/api/chatPreview"
+	payload := map[string]interface{}{
+		"uuid": "2780eb6218c34915bc8b8ec4535a716b",
+		"query": []map[string]string{
+			{"role": "user", "content": sb.String()},
+		},
+		"clientId":  "2as9fsas9f-9edb-45b9-ab70-38028a36fdfe",
+		"dialogId":  "ks9d3565-9d05-4c4c-93f6-99ebec96339f",
+		"channelId": "DS",
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest("POST", chatURL, bytes.NewBuffer(payloadBytes))
+	req.Header.Set("Authorization", token)
+	req.Header.Set("user_id", "dwliubo")
+	req.Header.Set("tenant_id", "zyxx")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "LLM Error: Request failed."
+	}
+	defer resp.Body.Close()
+
+	// Parse SSE response
+	var fullText strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data:") {
+			content := strings.TrimSpace(line[5:])
+			if content == "[DONE]" {
+				break
+			}
+			var dataObj struct {
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal([]byte(content), &dataObj); err == nil {
+				fullText.WriteString(dataObj.Content)
+			}
+		}
+	}
+
+	result := fullText.String()
+	if result == "" {
+		return "LLM Error: No response content."
+	}
+	return result
+}
