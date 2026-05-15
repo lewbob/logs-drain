@@ -121,15 +121,10 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	if req.ErrorsOnly {
 		// Focused filter for high-volume environments
-		// 1. Matches structured fields if they exist (status >= 400 or level is error/warn)
-		// 2. Matches Nginx access log patterns (HTTP status 4xx/5xx) inside _msg
-		// 3. Matches Java/General error keywords inside _msg
-		queryParts = append(queryParts, `(
-			status:>=400 
-			OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail 
-			OR _msg:~"HTTP/1\..\" [45]\d{2}" 
-			OR _msg:[" ERROR ", " WARN ", "Exception", "error", "ERROR", "fail", "timeout"]
-		)`)
+		// 1. Matches structured fields if they exist
+		// 2. Matches Nginx access log status codes via keyword search (faster and more reliable than regex)
+		// 3. Matches Java/General error keywords
+		queryParts = append(queryParts, `(status:>=400 OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail OR _msg:[" 400 ", " 401 ", " 403 ", " 404 ", " 405 ", " 499 ", " 500 ", " 502 ", " 503 ", " 504 "] OR _msg:[" ERROR ", " WARN ", "Exception", "error", "ERROR", "fail", "timeout"])`)
 	}
 
 	// Time range with quotes and space after colon for standard compliance
