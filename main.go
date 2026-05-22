@@ -120,11 +120,11 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.ErrorsOnly {
-		// Focused filter for high-volume environments
-		// 1. Matches structured fields if they exist
-		// 2. Matches Nginx access log status codes via keyword search (faster and more reliable than regex)
-		// 3. Matches Java/General error keywords
-		queryParts = append(queryParts, `(status:>=400 OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail OR _msg:[" 400 ", " 401 ", " 403 ", " 404 ", " 405 ", " 499 ", " 500 ", " 502 ", " 503 ", " 504 "] OR _msg:[" ERROR ", " WARN ", "Exception", "error", "ERROR", "fail", "timeout"])`)
+		// 针对海量日志环境的极致性能过滤器 (符合 Google 规范且自带详细中文注释)
+		// 1. 若 VictoriaLogs 已经将状态码或级别解析为结构化字段，优先匹配 (status >= 400 或 level 为 error/warn 等)
+		// 2. 针对 Nginx Access 未解析日志：通过 _msg 字段显式 OR 匹配常见的 HTTP 4xx 和 5xx 异常状态码 (如 " 404 ", " 500 " 等)
+		// 3. 针对 Java/业务日志：通过 _msg 字段匹配常见异常及报错关键字 (如 "ERROR", "Exception", "timeout" 等)
+		queryParts = append(queryParts, `(status:>=400 OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail OR _msg:" 400 " OR _msg:" 401 " OR _msg:" 403 " OR _msg:" 404 " OR _msg:" 405 " OR _msg:" 499 " OR _msg:" 500 " OR _msg:" 502 " OR _msg:" 503 " OR _msg:" 504 " OR _msg:" ERROR " OR _msg:" WARN " OR _msg:"Exception" OR _msg:"error" OR _msg:"ERROR" OR _msg:"fail" OR _msg:"timeout")`)
 	}
 
 	// Time range with quotes and space after colon for standard compliance
