@@ -16,7 +16,7 @@ type RouteItem struct {
 	Value int
 }
 
-func generateHTMLReport(w io.Writer, filePath, logType string, rawLines, accessTotal, errorTotal, parseErrors, noMsg int, routes []RouteItem, groups []*drain.LogGroup, groupMeta map[string][2]string, llmAnalysis string) {
+func generateHTMLReport(w io.Writer, filePath, logType, startTime, endTime string, rawLines, accessTotal, errorTotal, parseErrors, noMsg int, routes []RouteItem, groups []*drain.LogGroup, groupMeta map[string][2]string, llmAnalysis string) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	errorRate := float64(0)
 	if rawLines > 0 {
@@ -175,18 +175,27 @@ footer {
 	} else if logType == "java" {
 		title = "Java 业务排障分析报告"
 	}
+
+	timeRangeStr := "全量历史"
+	if startTime != "" && endTime != "" {
+		timeRangeStr = fmt.Sprintf("%s 至 %s", startTime, endTime)
+	} else if startTime != "" {
+		timeRangeStr = fmt.Sprintf(">= %s", startTime)
+	}
+
 	fmt.Fprintf(bw, `
   <div class="dashboard-header">
     <div class="title-group">
       <h1>%s</h1>
       <p>数据源: %s | 基于 Drain 聚类模型</p>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">分析时段: <strong style="color: var(--primary);">%s</strong></p>
     </div>
     <div style="text-align: right">
-      <div style="font-size: 13px; color: var(--text-secondary)">分析时间</div>
+      <div style="font-size: 13px; color: var(--text-secondary)">报告生成时间</div>
       <div style="font-size: 15px; font-weight: 500">%s</div>
     </div>
   </div>
-`, title, filePath, now)
+`, title, filePath, timeRangeStr, now)
 
 	// Stats Section
 	okTotal := accessTotal

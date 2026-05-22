@@ -205,7 +205,7 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	if req.OutputFormat == "html" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		generateHTMLReport(w, "VictoriaLogs ("+req.Project+"/"+req.Service+")", req.LogType,
+		generateHTMLReport(w, "VictoriaLogs ("+req.Project+"/"+req.Service+")", req.LogType, startTime, endTime,
 			processResult.RawLines, processResult.AccessTotal, processResult.ErrorTotal,
 			processResult.ParseErrors, processResult.NoMsg,
 			processResult.Routes, processResult.Groups, processResult.GroupMeta, llmAnalysis)
@@ -436,7 +436,7 @@ func runLocalDebug(filePath, logType string, sim float64, outFile string) {
 	if outFile != "" && strings.HasSuffix(strings.ToLower(outFile), ".html") {
 		outF, _ := os.Create(outFile)
 		defer outF.Close()
-		generateHTMLReport(outF, filePath, logType, res.RawLines, res.AccessTotal, res.ErrorTotal, res.ParseErrors, res.NoMsg, res.Routes, res.Groups, res.GroupMeta, "")
+		generateHTMLReport(outF, filePath, logType, "", "", res.RawLines, res.AccessTotal, res.ErrorTotal, res.ParseErrors, res.NoMsg, res.Routes, res.Groups, res.GroupMeta, "")
 		log.Printf("Report generated: %s", outFile)
 		return
 	}
