@@ -313,11 +313,44 @@ func processFullLogs(reader io.Reader, logType string, depth int, sim float64) L
 
 		var level, class string
 		if logType == "nginx" {
-			if m := nginxErrorRe.FindStringSubmatchIndex(msgStr); m != nil {
+			// 1. 尝试从结构化 JSON 中提取 HTTP 状态码以及内置 Level 辅助判定
+			var statusVal int
+			if s, ok := logEntry["status"]; ok {
+				switch v := s.(type) {
+				case float64:
+					statusVal = int(v)
+				case int:
+					statusVal = v
+				case string:
+					fmt.Sscanf(v, "%d", &statusVal)
+				}
+			}
+			var parsedLevel string
+			if l, ok := logEntry["level"]; ok {
+				if ls, ok := l.(string); ok {
+					parsedLevel = strings.ToLower(ls)
+				}
+			}
+
+			isNginxError := false
+			m := nginxErrorRe.FindStringSubmatchIndex(msgStr)
+			if m != nil {
+				// 匹配标准 Nginx Error 日志 (如 [error] / [info])
+				isNginxError = true
 				if m[2] >= 0 {
 					level = msgStr[m[2]:m[3]]
 				}
 				msgStr = strings.TrimSpace(msgStr[m[1]:])
+			} else if statusVal >= 400 || parsedLevel == "error" || parsedLevel == "warn" || parsedLevel == "failed" || parsedLevel == "fail" || parsedLevel == "err" {
+				// 匹配 HTTP 4xx/5xx 错误访问日志或显式带有错误等级的日志，将其归入异常聚类
+				isNginxError = true
+				level = "error"
+				if parsedLevel != "" {
+					level = parsedLevel
+				}
+			}
+
+			if isNginxError {
 				res.ErrorTotal++
 				g := d.ProcessLine(msgStr)
 				if g != nil {
@@ -327,6 +360,7 @@ func processFullLogs(reader io.Reader, logType string, depth int, sim float64) L
 				}
 				res.TotalProcessed++
 			} else {
+				// 仅有状态码 < 400 且无异常等级的日志才视作纯常规访问日志 (不送入聚类)
 				res.AccessTotal++
 				if m := routeRe.FindStringSubmatch(msgStr); len(m) > 1 {
 					routeCounts[m[1]]++
