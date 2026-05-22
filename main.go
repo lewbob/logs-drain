@@ -121,10 +121,11 @@ func normalizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	if req.ErrorsOnly {
 		// 针对海量日志环境的极致性能过滤器 (符合 Google 规范且自带详细中文注释)
-		// 1. 若 VictoriaLogs 已经将状态码或级别解析为结构化字段，优先匹配 (status >= 400 或 level 为 error/warn 等)
+		// 1. 若 VictoriaLogs 已经将状态码或级别解析为结构化字段，优先匹配 (status >= 400 或 level 为 error/warn/failed 等)
 		// 2. 针对 Nginx Access 未解析日志：通过 _msg 字段显式 OR 匹配常见的 HTTP 4xx 和 5xx 异常状态码 (如 " 404 ", " 500 " 等)
-		// 3. 针对 Java/业务日志：通过 _msg 字段匹配常见异常及报错关键字 (如 "ERROR", "Exception", "timeout" 等)
-		queryParts = append(queryParts, `(status:>=400 OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:fail OR _msg:" 400 " OR _msg:" 401 " OR _msg:" 403 " OR _msg:" 404 " OR _msg:" 405 " OR _msg:" 499 " OR _msg:" 500 " OR _msg:" 502 " OR _msg:" 503 " OR _msg:" 504 " OR _msg:" ERROR " OR _msg:" WARN " OR _msg:"Exception" OR _msg:"error" OR _msg:"ERROR" OR _msg:"fail" OR _msg:"timeout")`)
+		// 3. 针对 Java/业务日志/未结构化 Nginx 错误日志：通过 _msg 字段匹配常见异常及报错关键字 (如 "ERROR", "Exception", "failed", "timeout" 等)
+		// 4. 解决 Token 精确匹配问题：因为 VictoriaLogs 分词精确匹配且区分大小写，增加 "failed" 的多大小写变体以捕获 "No such file or directory" 类错误
+		queryParts = append(queryParts, `(status:>=400 OR level:ERROR OR level:WARN OR level:err OR level:warn OR level:error OR level:fail OR level:failed OR _msg:" 400 " OR _msg:" 401 " OR _msg:" 403 " OR _msg:" 404 " OR _msg:" 405 " OR _msg:" 499 " OR _msg:" 500 " OR _msg:" 502 " OR _msg:" 503 " OR _msg:" 504 " OR _msg:" ERROR " OR _msg:" WARN " OR _msg:"Exception" OR _msg:"error" OR _msg:"ERROR" OR _msg:"Error" OR _msg:"fail" OR _msg:"failed" OR _msg:"failed" OR _msg:"failed" OR _msg:"timeout")`)
 	}
 
 	// Time range with quotes and space after colon for standard compliance
